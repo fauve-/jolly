@@ -1,6 +1,5 @@
 [workspace]
 resolver = "2"
 members = [
-    "app-binary",
-    "core-lib",
+    "game_engine",
 ]

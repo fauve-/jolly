@@ -1,3 +1,4 @@
 flake.lock
 .direnv
 target/
+cuda_test/hello

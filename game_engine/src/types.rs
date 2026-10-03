@@ -15,6 +15,12 @@ pub enum Phase {
     Winter,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GameOutcome {
+    Victory { winner: Power },
+    TimeLimit { leaders: Vec<Power> },
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Location {
     A1,
@@ -115,8 +121,9 @@ pub enum CenterOwner {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GameState {
-    pub phase: Phase,
-    pub year: u8,
+    pub(crate) phase: Phase,
+    pub(crate) year: u8,
+    pub(crate) outcome: Option<GameOutcome>,
     units: HashMap<Location, Power>,
     centers: HashMap<Location, CenterOwner>,
 }
@@ -134,6 +141,10 @@ impl GameState {
     ];
 
     pub fn empty(phase: Phase, year: u8) -> Self {
+        assert!(
+            (1..=10).contains(&year),
+            "game year must be between 1 and 10"
+        );
         let centers = Self::SUPPLY_CENTERS
             .into_iter()
             .map(|location| (location, CenterOwner::Neutral))
@@ -141,6 +152,7 @@ impl GameState {
         Self {
             phase,
             year,
+            outcome: None,
             units: HashMap::new(),
             centers,
         }
@@ -172,6 +184,22 @@ impl GameState {
 
     pub fn occupant(&self, location: Location) -> Option<Power> {
         self.units.get(&location).copied()
+    }
+
+    pub const fn phase(&self) -> Phase {
+        self.phase
+    }
+
+    pub const fn year(&self) -> u8 {
+        self.year
+    }
+
+    pub fn outcome(&self) -> Option<&GameOutcome> {
+        self.outcome.as_ref()
+    }
+
+    pub const fn is_finished(&self) -> bool {
+        self.outcome.is_some()
     }
 
     pub fn center_owner(&self, location: Location) -> Option<CenterOwner> {
@@ -267,11 +295,25 @@ pub struct OrderResolution {
     pub support_status: Option<SupportStatus>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OrderRejectionReason {
+    NoUnitAtSource,
+    MultipleOrdersForSource,
+    IllegalOrder,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RejectedOrder {
+    pub order: Order,
+    pub reason: OrderRejectionReason,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MovementResult {
     pub units: HashMap<Location, Power>,
     pub orders: HashMap<Location, OrderResolution>,
     pub dislodged: Vec<(Location, Power)>,
+    pub rejected_orders: Vec<RejectedOrder>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -279,6 +321,16 @@ pub enum Adjustment {
     Build { at: Location, power: Power },
     Disband { at: Location, power: Power },
     Waive { power: Power },
+}
+
+impl Adjustment {
+    pub const fn power(self) -> Power {
+        match self {
+            Self::Build { power, .. } | Self::Disband { power, .. } | Self::Waive { power } => {
+                power
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

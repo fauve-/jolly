@@ -1,5 +1,5 @@
 [workspace]
 resolver = "2"
 members = [
-    "game_engine", "press_engine",
+    "game_engine", "press_engine", "protocol",
 ]

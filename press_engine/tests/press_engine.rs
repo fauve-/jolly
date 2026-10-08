@@ -98,6 +98,14 @@ fn assert_invalid_from_red(act: SpeechAct, expected: PressError) {
 }
 
 #[test]
+fn exact_duplicate_terms_are_rejected_instead_of_collapsed() {
+    assert_invalid_from_red(
+        SpeechAct::Promise(vec![r_move(), r_move()]),
+        PressError::DuplicateTerm,
+    );
+}
+
+#[test]
 fn v01_to_v05_recipient_phase_and_actor_validation_is_atomic() {
     let mut self_recipient = PressPhase::new(&fixture()).unwrap();
     self_recipient.activate(Power::Red).unwrap();

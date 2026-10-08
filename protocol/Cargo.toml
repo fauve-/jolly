@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+game_engine = { path = "../game_engine" }
+press_engine = { path = "../press_engine" }
+thiserror = "2"

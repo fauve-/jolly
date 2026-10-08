@@ -23,6 +23,17 @@ fn support_move(
     Order::SupportMove { from, unit, to }
 }
 
+#[test]
+fn an_army_cannot_support_itself() {
+    let state = spring().with_unit(B2, Power::Red);
+
+    assert!(!game_engine::is_legal_order(&state, support_hold(B2, B2)));
+    assert!(!game_engine::is_legal_order(
+        &state,
+        support_move(B2, B2, C2)
+    ));
+}
+
 fn spring() -> GameState {
     GameState::empty(Phase::Spring, 1)
 }

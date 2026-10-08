@@ -340,10 +340,13 @@ pub fn is_legal_order(state: &GameState, order: Order) -> bool {
         Order::Hold { .. } => true,
         Order::Move { from, to } => from.is_adjacent_to(to),
         Order::SupportHold { from, unit } => {
-            state.occupant(unit).is_some() && from.is_adjacent_to(unit)
+            unit != from && state.occupant(unit).is_some() && from.is_adjacent_to(unit)
         }
         Order::SupportMove { from, unit, to } => {
-            state.occupant(unit).is_some() && unit.is_adjacent_to(to) && from.is_adjacent_to(to)
+            unit != from
+                && state.occupant(unit).is_some()
+                && unit.is_adjacent_to(to)
+                && from.is_adjacent_to(to)
         }
     }
 }

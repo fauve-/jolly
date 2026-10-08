@@ -81,6 +81,8 @@ pub enum PressError {
     InvalidAvoidance,
     #[error("the message contains mechanically contradictory terms")]
     ContradictoryTerms,
+    #[error("the message contains an exact duplicate term")]
+    DuplicateTerm,
     #[error("there is no matching outstanding proposal")]
     NoOutstandingProposal,
     #[error("press cannot close until all openings and unread inboxes are consumed")]
@@ -258,16 +260,15 @@ impl PressPhase {
             return Ok(());
         };
 
-        if message.sender != active_power {
-            return Err(PressError::WrongSender);
-        }
-        if !self.can_send(active_power) {
-            return Err(PressError::BudgetExhausted);
-        }
-
         // Validate before applying any semantic transition. This is the
         // transaction boundary used for invalid generated output.
-        let normalized = self.validate_and_normalize(message)?;
+        let normalized = validate_press_message(
+            &self.game_state,
+            self.outstanding_proposals.values(),
+            active_power,
+            self.can_send(active_power),
+            message,
+        )?;
         self.apply_message(normalized);
         Ok(())
     }
@@ -387,78 +388,6 @@ impl PressPhase {
         Ok(&self.commitment_results)
     }
 
-    fn validate_and_normalize(
-        &self,
-        mut message: PressMessage,
-    ) -> Result<PressMessage, PressError> {
-        if message.sender == message.recipient {
-            return Err(PressError::SelfRecipient);
-        }
-
-        match &mut message.act {
-            SpeechAct::Accept | SpeechAct::Reject => {
-                if !self
-                    .outstanding_proposals
-                    .contains_key(&(message.recipient, message.sender))
-                {
-                    return Err(PressError::NoOutstandingProposal);
-                }
-            }
-            SpeechAct::Request(terms) => {
-                self.validate_terms(terms, &[message.recipient])?;
-            }
-            SpeechAct::Promise(terms) => {
-                self.validate_terms(terms, &[message.sender])?;
-            }
-            SpeechAct::Propose(terms) => {
-                self.validate_terms(terms, &[message.sender, message.recipient])?;
-            }
-        }
-        Ok(message)
-    }
-
-    fn validate_terms(
-        &self,
-        terms: &mut Vec<Proposition>,
-        allowed_actors: &[Power],
-    ) -> Result<(), PressError> {
-        if terms.is_empty() {
-            return Err(PressError::EmptyBundle);
-        }
-        for &term in terms.iter() {
-            if !allowed_actors.contains(&term.actor()) {
-                return Err(PressError::InvalidActor);
-            }
-            self.validate_term(term)?;
-        }
-        if terms_contradict(terms) {
-            return Err(PressError::ContradictoryTerms);
-        }
-        canonicalize_terms(terms);
-        Ok(())
-    }
-
-    fn validate_term(&self, term: Proposition) -> Result<(), PressError> {
-        match term {
-            Proposition::Order { actor, order } => {
-                if self.game_state.occupant(order.source()) != Some(actor)
-                    || !is_legal_order(&self.game_state, order)
-                {
-                    Err(PressError::InvalidOrder)
-                } else {
-                    Ok(())
-                }
-            }
-            Proposition::Avoid { actor, location } => {
-                if self.game_state.occupant(location) == Some(actor) {
-                    Err(PressError::InvalidAvoidance)
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
-
     fn apply_message(&mut self, message: PressMessage) {
         match &message.act {
             SpeechAct::Request(_) => {}
@@ -524,6 +453,89 @@ impl PressPhase {
             .push(message.clone());
         self.messages.push(message.clone());
         *self.sent_count.get_mut(&message.sender).unwrap() += 1;
+    }
+}
+
+/// Validates and canonically normalizes a response without mutating press
+/// state. Protocol parsing and masking use this as the authoritative semantic
+/// boundary before the caller submits the response to [`PressPhase::respond`].
+pub fn validate_press_message<'a>(
+    game_state: &GameState,
+    outstanding_proposals: impl IntoIterator<Item = &'a Proposal>,
+    expected_sender: Power,
+    can_send: bool,
+    mut message: PressMessage,
+) -> Result<PressMessage, PressError> {
+    if message.sender != expected_sender {
+        return Err(PressError::WrongSender);
+    }
+    if !can_send {
+        return Err(PressError::BudgetExhausted);
+    }
+    if message.sender == message.recipient {
+        return Err(PressError::SelfRecipient);
+    }
+
+    let proposals: Vec<_> = outstanding_proposals.into_iter().collect();
+    match &mut message.act {
+        SpeechAct::Accept | SpeechAct::Reject => {
+            if !proposals.iter().any(|proposal| {
+                proposal.sender == message.recipient && proposal.recipient == message.sender
+            }) {
+                return Err(PressError::NoOutstandingProposal);
+            }
+        }
+        SpeechAct::Request(terms) => {
+            validate_terms(game_state, terms, &[message.recipient])?;
+        }
+        SpeechAct::Promise(terms) => {
+            validate_terms(game_state, terms, &[message.sender])?;
+        }
+        SpeechAct::Propose(terms) => {
+            validate_terms(game_state, terms, &[message.sender, message.recipient])?;
+        }
+    }
+    Ok(message)
+}
+
+fn validate_terms(
+    game_state: &GameState,
+    terms: &mut [Proposition],
+    allowed_actors: &[Power],
+) -> Result<(), PressError> {
+    if terms.is_empty() {
+        return Err(PressError::EmptyBundle);
+    }
+    for &term in terms.iter() {
+        if !allowed_actors.contains(&term.actor()) {
+            return Err(PressError::InvalidActor);
+        }
+        validate_term(game_state, term)?;
+    }
+    if terms_contradict(terms) {
+        return Err(PressError::ContradictoryTerms);
+    }
+    canonicalize_propositions(terms)
+}
+
+fn validate_term(game_state: &GameState, term: Proposition) -> Result<(), PressError> {
+    match term {
+        Proposition::Order { actor, order } => {
+            if game_state.occupant(order.source()) != Some(actor)
+                || !is_legal_order(game_state, order)
+            {
+                Err(PressError::InvalidOrder)
+            } else {
+                Ok(())
+            }
+        }
+        Proposition::Avoid { actor, location } => {
+            if game_state.occupant(location) == Some(actor) {
+                Err(PressError::InvalidAvoidance)
+            } else {
+                Ok(())
+            }
+        }
     }
 }
 
@@ -633,25 +645,38 @@ fn order_enters(order: Order, location: Location) -> bool {
     matches!(order, Order::Move { to, .. } | Order::SupportMove { to, .. } if to == location)
 }
 
-fn canonicalize_terms(terms: &mut Vec<Proposition>) {
-    terms.sort_by_key(|term| match *term {
-        Proposition::Order { actor, order } => {
-            let (kind, source, unit, destination) = match order {
-                Order::Hold { at } => (0, at, at, at),
-                Order::Move { from, to } => (1, from, from, to),
-                Order::SupportHold { from, unit } => (2, from, unit, unit),
-                Order::SupportMove { from, unit, to } => (3, from, unit, to),
-            };
-            (
-                actor as u8,
-                0,
-                source as u8,
-                kind,
-                unit as u8,
-                destination as u8,
-            )
+/// Applies the protocol's lexicographic token-order rule and rejects exact
+/// duplicates rather than silently collapsing them.
+pub fn canonicalize_propositions(terms: &mut [Proposition]) -> Result<(), PressError> {
+    terms.sort_by_key(|term| proposition_token_key(*term));
+    if terms.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(PressError::DuplicateTerm);
+    }
+    Ok(())
+}
+
+fn proposition_token_key(term: Proposition) -> Vec<u8> {
+    let actor = match term.actor() {
+        Power::Green => 12,
+        Power::Yellow => 13,
+        Power::Red => 14,
+        Power::Blue => 15,
+    };
+    match term {
+        Proposition::Avoid { location, .. } => vec![actor, 45, 48 + location as u8],
+        Proposition::Order { order, .. } => {
+            let mut key = vec![actor, 48 + order.source() as u8];
+            match order {
+                Order::Hold { .. } => key.push(31),
+                Order::Move { to, .. } => key.extend([32, 48 + to as u8]),
+                Order::SupportHold { unit, .. } => {
+                    key.extend([33, 48 + unit as u8, 31]);
+                }
+                Order::SupportMove { unit, to, .. } => {
+                    key.extend([33, 48 + unit as u8, 32, 48 + to as u8]);
+                }
+            }
+            key
         }
-        Proposition::Avoid { actor, location } => (actor as u8, 1, location as u8, 0, 0, 0),
-    });
-    terms.dedup();
+    }
 }

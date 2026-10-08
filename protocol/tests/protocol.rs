@@ -23,14 +23,14 @@ fn press_fixture() -> GameState {
 }
 
 #[test]
-fn vocabulary_is_the_frozen_84_token_bijection() {
-    assert_eq!(TOKEN_COUNT, 84);
-    assert_eq!(Token::ALL.len(), 84);
-    assert_eq!(Token::SYMBOLS.len(), 84);
+fn vocabulary_is_the_frozen_82_token_bijection() {
+    assert_eq!(TOKEN_COUNT, 82);
+    assert_eq!(Token::ALL.len(), 82);
+    assert_eq!(Token::SYMBOLS.len(), 82);
     assert_eq!(PROTOCOL_VERSION, "tiny-diplomacy/v0-press");
     assert_eq!(
         TOKEN_MANIFEST_SHA256,
-        "b510b31198e270f1cff0f23825af861ea76675030c28677e6abaa5bc6a8c0902"
+        "1f21b70055bc131316ea17152c7be4928e5d0e82fef018b88ad950eee0ae83e7"
     );
 
     for (index, token) in Token::ALL.into_iter().enumerate() {
@@ -38,7 +38,7 @@ fn vocabulary_is_the_frozen_84_token_bijection() {
         assert_eq!(Token::try_from(index as u8).unwrap(), token);
         assert_eq!(Token::from_str(token.symbol()).unwrap(), token);
     }
-    assert!(Token::try_from(84).is_err());
+    assert!(Token::try_from(82).is_err());
     assert!(Token::from_str("EOS").is_err());
     assert!(Token::from_str("...").is_err());
 }
@@ -362,13 +362,210 @@ fn press_term_serializer_sorts_by_complete_token_encoding() {
 }
 
 #[test]
-fn diplomatic_context_fails_explicitly_until_record_grammar_is_available() {
+fn empty_diplomatic_context_has_fixed_sections_and_enables_press_observation() {
     let state = press_fixture();
     let mut phase = PressPhase::new(&state).unwrap();
     let activation = phase.activate(Power::Red).unwrap();
     let snapshot = DecisionSnapshot::press(&state, activation, phase.view_for(Power::Red)).unwrap();
+    let encoded = encode_observation(&snapshot).unwrap();
+    let tokens: Vec<_> = encoded.iter().map(|token| token.token()).collect();
+
+    assert_eq!(tokens.len(), 100);
     assert_eq!(
-        encode_observation(&snapshot),
-        Err(ProtocolError::DiplomaticContextUnavailable)
+        &tokens[94..],
+        &[
+            Token::Diplomacy,
+            Token::Inbox,
+            Token::Proposals,
+            Token::Commitments,
+            Token::History,
+            Token::Press,
+        ]
+    );
+}
+
+#[test]
+fn inbox_and_commitment_records_include_identity_time_visibility_and_payload() {
+    let state = press_fixture();
+    let mut phase = PressPhase::new(&state).unwrap();
+    phase.activate(Power::Blue).unwrap();
+    phase
+        .respond(Some(PressMessage {
+            sender: Power::Blue,
+            recipient: Power::Red,
+            visibility: Visibility::Private,
+            act: SpeechAct::Promise(vec![Proposition::Avoid {
+                actor: Power::Blue,
+                location: A2,
+            }]),
+        }))
+        .unwrap();
+    let activation = phase.activate(Power::Red).unwrap();
+    let snapshot = DecisionSnapshot::press(&state, activation, phase.view_for(Power::Red)).unwrap();
+    let encoded = encode_observation(&snapshot).unwrap();
+    let tokens: Vec<_> = encoded.iter().map(|token| token.token()).collect();
+    let record = [
+        Token::Bos,
+        Token::Blue,
+        Token::Spring,
+        Token::Year1,
+        Token::Private,
+        Token::Red,
+        Token::Promise,
+        Token::Blue,
+        Token::Avoid,
+        Token::A2,
+        Token::End,
+    ];
+
+    assert_eq!(tokens.len(), 122);
+    assert_eq!(tokens[94], Token::Diplomacy);
+    assert_eq!(tokens[95], Token::Inbox);
+    assert_eq!(&tokens[96..107], &record);
+    assert_eq!(tokens[107], Token::Proposals);
+    assert_eq!(tokens[108], Token::Commitments);
+    assert_eq!(&tokens[109..120], &record);
+    assert_eq!(&tokens[120..], &[Token::History, Token::Press]);
+}
+
+fn green_view_with_optional_hidden_exchange(
+    include_hidden: bool,
+) -> (GameState, press_engine::PressView) {
+    let state = GameState::empty(Phase::Spring, 1)
+        .with_unit(A1, Power::Green)
+        .with_unit(B2, Power::Red)
+        .with_unit(C3, Power::Blue);
+    let mut phase = PressPhase::new(&state).unwrap();
+    if include_hidden {
+        phase.activate(Power::Blue).unwrap();
+        phase
+            .respond(Some(PressMessage {
+                sender: Power::Blue,
+                recipient: Power::Red,
+                visibility: Visibility::Private,
+                act: SpeechAct::Promise(vec![Proposition::Avoid {
+                    actor: Power::Blue,
+                    location: E1,
+                }]),
+            }))
+            .unwrap();
+    }
+    phase.activate(Power::Red).unwrap();
+    phase
+        .respond(Some(PressMessage {
+            sender: Power::Red,
+            recipient: Power::Green,
+            visibility: Visibility::Public,
+            act: SpeechAct::Promise(vec![Proposition::Avoid {
+                actor: Power::Red,
+                location: F6,
+            }]),
+        }))
+        .unwrap();
+    let view = phase.view_for(Power::Green);
+    (state, view)
+}
+
+#[test]
+fn hidden_private_exchanges_cannot_change_an_uninvolved_observation() {
+    let (plain_state, plain_view) = green_view_with_optional_hidden_exchange(false);
+    let (hidden_state, hidden_view) = green_view_with_optional_hidden_exchange(true);
+    assert_eq!(plain_view, hidden_view);
+
+    let plain =
+        DecisionSnapshot::movement_with_diplomacy(&plain_state, Power::Green, plain_view).unwrap();
+    let hidden =
+        DecisionSnapshot::movement_with_diplomacy(&hidden_state, Power::Green, hidden_view)
+            .unwrap();
+    assert_eq!(
+        encode_observation(&plain).unwrap(),
+        encode_observation(&hidden).unwrap()
+    );
+}
+
+#[test]
+fn inbox_keeps_delivery_order_while_proposals_use_sender_recipient_order() {
+    let state = GameState::empty(Phase::Spring, 1)
+        .with_unit(A1, Power::Green)
+        .with_unit(B2, Power::Red)
+        .with_unit(C3, Power::Blue);
+    let proposal = |sender, location| PressMessage {
+        sender,
+        recipient: Power::Green,
+        visibility: Visibility::Public,
+        act: SpeechAct::Propose(vec![Proposition::Avoid {
+            actor: sender,
+            location,
+        }]),
+    };
+    let mut phase = PressPhase::new(&state).unwrap();
+    phase.activate(Power::Blue).unwrap();
+    phase.respond(Some(proposal(Power::Blue, E1))).unwrap();
+    phase.activate(Power::Red).unwrap();
+    phase.respond(Some(proposal(Power::Red, F6))).unwrap();
+
+    let snapshot = DecisionSnapshot::movement_with_diplomacy(
+        &state,
+        Power::Green,
+        phase.view_for(Power::Green),
+    )
+    .unwrap();
+    let encoded = encode_observation(&snapshot).unwrap();
+    let tokens: Vec<_> = encoded.iter().map(|token| token.token()).collect();
+
+    // Delivery was BLUE then RED.
+    assert_eq!(tokens[97], Token::Blue);
+    assert_eq!(tokens[108], Token::Red);
+    assert_eq!(tokens[118], Token::Proposals);
+    // Canonical proposal order is RED then BLUE because their IDs are 14, 15.
+    assert_eq!(tokens[120], Token::Red);
+    assert_eq!(tokens[131], Token::Blue);
+    assert_eq!(tokens[141], Token::Commitments);
+}
+
+#[test]
+fn context_policy_reserves_response_space_and_keeps_only_whole_history_records() {
+    let state = press_fixture();
+    let mut phase = PressPhase::new(&state).unwrap();
+    phase.activate(Power::Red).unwrap();
+    phase
+        .respond(Some(PressMessage {
+            sender: Power::Red,
+            recipient: Power::Blue,
+            visibility: Visibility::Private,
+            act: SpeechAct::Promise(vec![Proposition::Avoid {
+                actor: Power::Red,
+                location: F6,
+            }]),
+        }))
+        .unwrap();
+    let snapshot =
+        DecisionSnapshot::movement_with_diplomacy(&state, Power::Red, phase.view_for(Power::Red))
+            .unwrap();
+
+    // Required state is 111 tokens; the one optional history record is 11.
+    let truncated = encode_observation_with_policy(&snapshot, &ContextPolicy::new(121, 0)).unwrap();
+    assert_eq!(truncated.len(), 111);
+    let exact = encode_observation_with_policy(&snapshot, &ContextPolicy::new(122, 0)).unwrap();
+    assert_eq!(exact.len(), 122);
+
+    let empty_state = press_fixture();
+    let mut empty_phase = PressPhase::new(&empty_state).unwrap();
+    let activation = empty_phase.activate(Power::Red).unwrap();
+    let empty_snapshot =
+        DecisionSnapshot::press(&empty_state, activation, empty_phase.view_for(Power::Red))
+            .unwrap();
+    assert_eq!(
+        encode_observation_with_policy(&empty_snapshot, &ContextPolicy::new(103, 3))
+            .unwrap()
+            .len(),
+        100
+    );
+    assert_eq!(
+        encode_observation_with_policy(&empty_snapshot, &ContextPolicy::new(102, 3)),
+        Err(ProtocolError::ContextOverflow {
+            required: 103,
+            capacity: 102,
+        })
     );
 }

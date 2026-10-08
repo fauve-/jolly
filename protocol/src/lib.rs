@@ -7,7 +7,9 @@ mod token;
 
 pub use decoder::{Decoder, ResponseBudget};
 pub use error::{ProtocolError, ProtocolResult};
-pub use observation::encode_observation;
+pub use observation::{
+    ContextPolicy, DEFAULT_CONTEXT_CAPACITY, encode_observation, encode_observation_with_policy,
+};
 pub use response::{AdjustmentResponse, TypedResponse, encode_response, parse_response};
 pub use snapshot::{DecisionSnapshot, GenerationMode, PressDecision};
 pub use token::{

@@ -58,7 +58,7 @@ Fill all unspecified ownership and calendar values explicitly in code. Never let
 
 | ID | Requirement |
 | --- | --- |
-| TOK-01 | Inventory has exactly 84 unique symbols and 84 unique IDs |
+| TOK-01 | Inventory has exactly 82 unique symbols and 82 unique IDs |
 | TOK-02 | Every token converts symbol → ID → symbol without loss |
 | TOK-03 | Exact ID assignments match a reviewed, checked-in manifest |
 | TOK-04 | Unknown integer IDs and textual spellings produce explicit errors |
@@ -67,7 +67,7 @@ Fill all unspecified ownership and calendar values explicitly in code. Never let
 | TOK-07 | The artifact-loading boundary rejects incompatible vocabulary/version metadata |
 | TOK-08 | Context-only tokens are rejected in every generated response mode |
 
-TOK-03 uses the frozen table in protocol Section 1.8: IDs 0–11 controls, 12–17 powers/cell values, 18–20 phases, 21–30 years, 31–37 game actions, 38–47 press/status, and 48–83 row-major locations. Its canonical manifest SHA-256 is `b510b31198e270f1cff0f23825af861ea76675030c28677e6abaa5bc6a8c0902`. Hand-author the fixture; do not derive it from enum iteration at runtime. If checkpoint loading belongs to another crate, TOK-07 is an integration obligation there.
+TOK-03 uses the frozen table in protocol Section 1.8: IDs 0–11 controls, 12–17 powers/cell values, 18–20 phases, 21–30 years, 31–37 game actions, 38–45 press tokens, and 46–81 row-major locations. Its canonical manifest SHA-256 is `1f21b70055bc131316ea17152c7be4928e5d0e82fef018b88ad950eee0ae83e7`. Hand-author the fixture; do not derive it from enum iteration at runtime. If checkpoint loading belongs to another crate, TOK-07 is an integration obligation there.
 
 ## 5. Observation serialization
 

@@ -663,17 +663,17 @@ fn proposition_token_key(term: Proposition) -> Vec<u8> {
         Power::Blue => 15,
     };
     match term {
-        Proposition::Avoid { location, .. } => vec![actor, 45, 48 + location as u8],
+        Proposition::Avoid { location, .. } => vec![actor, 45, 46 + location as u8],
         Proposition::Order { order, .. } => {
-            let mut key = vec![actor, 48 + order.source() as u8];
+            let mut key = vec![actor, 46 + order.source() as u8];
             match order {
                 Order::Hold { .. } => key.push(31),
-                Order::Move { to, .. } => key.extend([32, 48 + to as u8]),
+                Order::Move { to, .. } => key.extend([32, 46 + to as u8]),
                 Order::SupportHold { unit, .. } => {
-                    key.extend([33, 48 + unit as u8, 31]);
+                    key.extend([33, 46 + unit as u8, 31]);
                 }
                 Order::SupportMove { unit, to, .. } => {
-                    key.extend([33, 48 + unit as u8, 32, 48 + to as u8]);
+                    key.extend([33, 46 + unit as u8, 32, 46 + to as u8]);
                 }
             }
             key

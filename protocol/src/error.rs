@@ -50,6 +50,8 @@ pub enum ProtocolError {
     DecoderTerminal,
     #[error("the decoder has not reached END")]
     DecoderIncomplete,
-    #[error("diplomatic context serialization requires the authoritative v0 record grammar")]
-    DiplomaticContextUnavailable,
+    #[error(
+        "observation and reserved response require {required} tokens but total capacity is {capacity}"
+    )]
+    ContextOverflow { required: usize, capacity: usize },
 }

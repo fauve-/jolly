@@ -51,7 +51,7 @@ Candle, a transformer, training algorithms, rewards, and natural-language transl
 
 ## 4. Vocabulary and compatibility
 
-The vocabulary contains **84 model-visible tokens**:
+The vocabulary contains **82 model-visible tokens**:
 
 | Category | Count | Contents |
 | --- | ---: | --- |
@@ -59,10 +59,10 @@ The vocabulary contains **84 model-visible tokens**:
 | Powers and cell values | 6 | `GREEN YELLOW RED BLUE NEUTRAL EMPTY` |
 | Calendar | 13 | `SPRING AUTUMN WINTER`, `YEAR_1` through `YEAR_10` |
 | Game actions | 7 | `HOLD MOVE SUPPORT BUILD WAIVE DISBAND NONE` |
-| Press/status | 10 | `PUBLIC PRIVATE PROPOSE PROMISE REQUEST ACCEPT REJECT AVOID FULFILLED VIOLATED` |
+| Press | 8 | `PUBLIC PRIVATE PROPOSE PROMISE REQUEST ACCEPT REJECT AVOID` |
 | Locations | 36 | `A1` through `F6`, in row-major order |
 
-Every symbolic token maps to exactly one integer ID. The frozen assignment is defined in Section 1.8 of `../../docs/protocol.md`: controls are IDs 0–11, powers/cell values 12–17, phases 18–20, years 21–30, game actions 31–37, press/status tokens 38–47, and row-major locations 48–83. Code must implement that table explicitly rather than derive persistence from Rust enum declaration order.
+Every symbolic token maps to exactly one integer ID. The frozen assignment is defined in Section 1.8 of `../../docs/protocol.md`: controls are IDs 0–11, powers/cell values 12–17, phases 18–20, years 21–30, game actions 31–37, press tokens 38–45, and row-major locations 46–81. Code must implement that table explicitly rather than derive persistence from Rust enum declaration order.
 
 A `u8` can hold this vocabulary, but the public model adapter may use another integer width. Record the protocol version and token-table fingerprint with persisted datasets and checkpoints. Incompatible mappings must be rejected rather than silently interpreted.
 
@@ -226,7 +226,7 @@ HISTORY <zero or more records>
 <generation-marker>
 ```
 
-Each record begins with `BOS`, includes sender or committing power plus phase/year, visibility, counterparty or recipient, and its act/status, and ends with `END`. The exact record grammar is authoritative in Section 18 of `../../docs/protocol.md`. `INBOX` uses delivery order, proposals use `(sender, recipient)` order, commitments use lexicographic token order, and history uses per-observer visible chronology.
+Each record begins with `BOS`, includes sender or committing power plus phase/year, visibility, counterparty or recipient, and its speech act, and ends with `END`. The exact record grammar is authoritative in Section 18 of `../../docs/protocol.md`. `INBOX` uses delivery order, proposals use `(sender, recipient)` order, commitments use lexicographic token order, and history uses per-observer visible chronology. Fulfillment diagnostics remain typed press-engine data and are not model-visible tokens in v0.
 
 Mixed visibility must not leak private agreement terms. A public acceptance of a private proposal reveals the acceptance but not its terms. An accepted proposal's commitment details are public only if both proposal and acceptance were public.
 
@@ -262,7 +262,7 @@ Errors should identify token position, generation mode, and a useful cause such 
 
 | Area | Required evidence |
 | --- | --- |
-| Vocabulary | Exactly 84 unique symbols/IDs; bijective conversion; unknown-ID rejection; frozen mapping fixture |
+| Vocabulary | Exactly 82 unique symbols/IDs; bijective conversion; unknown-ID rejection; frozen mapping fixture |
 | Observation | Golden initial-state encodings for each power/mode; fixed cell/center order; 95-token base length |
 | Responses | Typed action round trips for every movement form, Winter case, and speech act; semantic equality after documented canonicalization |
 | Strictness | Malformed, incomplete, trailing, wrong-mode, duplicate/conflicting, and noncanonical sequences fail clearly |

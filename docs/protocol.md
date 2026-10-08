@@ -18,10 +18,16 @@ The design goal of the press language is deliberately narrow:
 
 ## 1. Vocabulary
 
-The original no-press protocol contains 68 tokens. Structured press adds nine tokens:
+The original no-press protocol contains 68 tokens. Structured press and its
+diplomatic-context sections add fourteen tokens:
 
 ```text
 PRESS
+DIPLOMACY
+INBOX
+PROPOSALS
+COMMITMENTS
+HISTORY
 PUBLIC
 PRIVATE
 PROPOSE
@@ -32,9 +38,9 @@ REJECT
 AVOID
 ```
 
-The resulting protocol contains **77 model-visible tokens**.
+The resulting protocol contains **82 model-visible tokens**.
 
-### 1.1 Control tokens — 7
+### 1.1 Control tokens — 12
 
 ```text
 BOS
@@ -43,6 +49,11 @@ CENTERS
 ORDERS
 ADJUST
 PRESS
+DIPLOMACY
+INBOX
+PROPOSALS
+COMMITMENTS
+HISTORY
 END
 ```
 
@@ -52,6 +63,11 @@ END
 - `ORDERS` begins Spring or Autumn movement-order generation.
 - `ADJUST` begins Winter adjustment generation.
 - `PRESS` begins structured press generation.
+- `DIPLOMACY` begins the diplomatic-context block.
+- `INBOX` begins the acting power's current unread-message records.
+- `PROPOSALS` begins the visible outstanding-proposal records.
+- `COMMITMENTS` begins the visible active-commitment records.
+- `HISTORY` begins optional visible message-history records.
 - `END` terminates the generated response.
 
 `END` remains the sole terminator. There is no separate `EOS` token.
@@ -150,17 +166,38 @@ F1 F2 F3 F4 F5 F6
 
 | Category | Count |
 | --- | ---: |
-| Control | 7 |
+| Control | 12 |
 | Powers and cell values | 6 |
 | Calendar | 13 |
 | Game actions | 7 |
 | Press tokens | 8 |
 | Locations | 36 |
-| **Total** | **77** |
+| **Total** | **82** |
 
-The protocol does not define `EOS`, `PAD`, `UNK`, punctuation, unit-type, natural-language, alliance, trust, betrayal, lie, threat, or friendship tokens.
+The protocol does not define `EOS`, `PAD`, `UNK`, punctuation, unit-type,
+natural-language, alliance, trust, betrayal, lie, threat, or friendship
+tokens.
 
 Whitespace and line breaks may appear in human-readable renderings but are not tokens.
+
+### 1.8 Frozen token IDs
+
+The v0 assignment is explicit and must not be inferred from enum declaration
+order:
+
+| IDs | Tokens |
+| --- | --- |
+| 0–11 | `BOS BOARD CENTERS ORDERS ADJUST PRESS DIPLOMACY INBOX PROPOSALS COMMITMENTS HISTORY END` |
+| 12–17 | `GREEN YELLOW RED BLUE NEUTRAL EMPTY` |
+| 18–20 | `SPRING AUTUMN WINTER` |
+| 21–30 | `YEAR_1` through `YEAR_10` |
+| 31–37 | `HOLD MOVE SUPPORT BUILD WAIVE DISBAND NONE` |
+| 38–45 | `PUBLIC PRIVATE PROPOSE PROMISE REQUEST ACCEPT REJECT AVOID` |
+| 46–81 | `A1` through `F6` in row-major order |
+
+The canonical manifest is the UTF-8 sequence `ID`, tab, symbol, newline for
+each ID in ascending order. Its SHA-256 is
+`1f21b70055bc131316ea17152c7be4928e5d0e82fef018b88ad950eee0ae83e7`.
 
 ---
 

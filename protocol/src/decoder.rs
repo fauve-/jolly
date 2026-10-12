@@ -62,12 +62,12 @@ impl Decoder {
             .expect("a decoder reached only through push must retain a valid prefix");
         let mut mask = TokenMask::empty();
         for token in analysis.candidates {
-            let mut extended = self.prefix.clone();
-            extended.push(token.id());
-            let Ok(next) = analyze(&self.snapshot, &extended) else {
+            let Ok(minimum_remaining) =
+                minimum_after_candidate(&self.snapshot, analysis.stage.clone(), token)
+            else {
                 continue;
             };
-            if extended.len() + next.minimum_remaining <= self.budget.max_tokens() {
+            if self.prefix.len() + 1 + minimum_remaining <= self.budget.max_tokens() {
                 mask.insert(token);
             }
         }
@@ -98,7 +98,17 @@ impl Decoder {
     }
 }
 
+#[derive(Clone)]
+enum DecoderStage {
+    Movement(MoveStage),
+    Adjustment(AdjustmentStage),
+    Press(PressStage),
+}
+
+/// A transient result of replaying the decoder prefix. The stage is used for
+/// one-token budget lookahead and is never stored as independent decoder state.
 struct Analysis {
+    stage: DecoderStage,
     candidates: Vec<Token>,
     minimum_remaining: usize,
 }
@@ -109,6 +119,30 @@ fn analyze(snapshot: &DecisionSnapshot, prefix: &[TokenId]) -> ProtocolResult<An
         GenerationMode::Adjustment => analyze_adjustment(snapshot, prefix),
         GenerationMode::Press => analyze_press(snapshot, prefix),
     }
+}
+
+fn minimum_after_candidate(
+    snapshot: &DecisionSnapshot,
+    stage: DecoderStage,
+    token: Token,
+) -> ProtocolResult<usize> {
+    Ok(match stage {
+        DecoderStage::Movement(stage) => {
+            let state = snapshot.game_state();
+            let sources = owned_sources(state, snapshot.acting_power());
+            let next = advance_movement(&sources, stage, token)?;
+            movement_minimum(state, &sources, next)
+        }
+        DecoderStage::Adjustment(stage) => {
+            let delta = adjustment_delta(snapshot);
+            let next = advance_adjustment(delta, stage, token);
+            adjustment_minimum(delta, next)
+        }
+        DecoderStage::Press(stage) => {
+            let next = advance_press(snapshot, stage, token)?;
+            press_minimum(snapshot, &next)?
+        }
+    })
 }
 
 fn owned_sources(state: &GameState, power: Power) -> Vec<Location> {
@@ -159,6 +193,7 @@ fn analyze_movement(snapshot: &DecisionSnapshot, prefix: &[TokenId]) -> Protocol
         stage = advance_movement(&sources, stage, token)?;
     }
     Ok(Analysis {
+        stage: DecoderStage::Movement(stage),
         candidates: movement_candidates(state, &sources, stage),
         minimum_remaining: movement_minimum(state, &sources, stage),
     })
@@ -384,6 +419,7 @@ fn analyze_adjustment(snapshot: &DecisionSnapshot, prefix: &[TokenId]) -> Protoc
         stage = advance_adjustment(delta, stage, token);
     }
     Ok(Analysis {
+        stage: DecoderStage::Adjustment(stage),
         candidates: adjustment_candidates(snapshot, delta, stage),
         minimum_remaining: adjustment_minimum(delta, stage),
     })
@@ -509,9 +545,12 @@ fn analyze_press(snapshot: &DecisionSnapshot, prefix: &[TokenId]) -> ProtocolRes
         }
         stage = advance_press(snapshot, stage, token)?;
     }
+    let candidates = press_candidates(snapshot, &stage)?;
+    let minimum_remaining = press_minimum(snapshot, &stage)?;
     Ok(Analysis {
-        candidates: press_candidates(snapshot, &stage)?,
-        minimum_remaining: press_minimum(snapshot, &stage)?,
+        stage: DecoderStage::Press(stage),
+        candidates,
+        minimum_remaining,
     })
 }
 

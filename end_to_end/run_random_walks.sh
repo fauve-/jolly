@@ -64,7 +64,32 @@ run_one() {
     fi
 }
 
+report_progress() {
+    local completed="$1"
+    local width=40
+    local filled
+    local percent
+    local full_bar="########################################"
+    local empty_bar="........................................"
+
+    if (( completed != 0 && completed != iterations && completed % 10 != 0 )); then
+        return
+    fi
+
+    filled=$((completed * width / iterations))
+    percent=$((completed * 100 / iterations))
+    printf 'progress: [%s%s] %d/%d (%d%%)\n' \
+        "${full_bar:0:filled}" \
+        "${empty_bar:filled}" \
+        "$completed" \
+        "$iterations" \
+        "$percent"
+}
+
 running=0
+completed=0
+report_progress "$completed"
+
 for ((iteration = 1; iteration <= iterations; iteration++)); do
     seed="$(od -An -N8 -tu8 /dev/urandom | tr -d '[:space:]')"
     run_one "$iteration" "$seed" &
@@ -73,8 +98,16 @@ for ((iteration = 1; iteration <= iterations; iteration++)); do
     if (( running >= parallelism )); then
         wait -n || true
         ((running -= 1))
+        ((completed += 1))
+        report_progress "$completed"
     fi
 done
 
-wait || true
+while (( running > 0 )); do
+    wait -n || true
+    ((running -= 1))
+    ((completed += 1))
+    report_progress "$completed"
+done
+
 echo "completed $iterations random walks; failure traces are in $failures_dir"

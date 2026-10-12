@@ -1,5 +1,5 @@
 [workspace]
 resolver = "2"
-members = [
+members = ["end_to_end",
     "game_engine", "press_engine", "protocol",
 ]

@@ -86,7 +86,7 @@ REJECT
 AVOID
 ```
 
-The combined protocol currently contains **77 model-visible tokens**.
+The combined protocol currently contains **82 model-visible tokens**.
 
 Press is structured and game-grounded rather than natural language.
 

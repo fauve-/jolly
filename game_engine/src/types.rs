@@ -220,6 +220,33 @@ impl GameState {
             .count()
     }
 
+    /// Renders the board as a six-by-six character grid. Armies use uppercase
+    /// power initials, owned centers use lowercase initials, neutral centers
+    /// use `n`, and ordinary empty locations use `.`. An army takes visual
+    /// precedence over a center at the same location.
+    pub fn board_state_string(&self) -> String {
+        let mut board = String::new();
+
+        for (index, location) in Location::ALL.into_iter().enumerate() {
+            if index > 0 {
+                board.push(if index % 6 == 0 { '\n' } else { ' ' });
+            }
+
+            let symbol = if let Some(power) = self.occupant(location) {
+                power_symbol(power, true)
+            } else {
+                match self.center_owner(location) {
+                    Some(CenterOwner::Power(power)) => power_symbol(power, false),
+                    Some(CenterOwner::Neutral) => 'n',
+                    None => '.',
+                }
+            };
+            board.push(symbol);
+        }
+
+        board
+    }
+
     pub(crate) fn units(&self) -> &HashMap<Location, Power> {
         &self.units
     }
@@ -230,6 +257,21 @@ impl GameState {
 
     pub(crate) fn centers_mut(&mut self) -> &mut HashMap<Location, CenterOwner> {
         &mut self.centers
+    }
+}
+
+fn power_symbol(power: Power, uppercase: bool) -> char {
+    let symbol = match power {
+        Power::Red => 'r',
+        Power::Blue => 'b',
+        Power::Green => 'g',
+        Power::Yellow => 'y',
+    };
+
+    if uppercase {
+        symbol.to_ascii_uppercase()
+    } else {
+        symbol
     }
 }
 
@@ -337,4 +379,22 @@ impl Adjustment {
 pub struct AdjustmentResolution {
     pub adjustment: Adjustment,
     pub applied: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn board_string_shows_armies_centers_and_empty_squares() {
+        let state = GameState::empty(Phase::Spring, 1)
+            .with_center_owner(Location::A1, CenterOwner::Power(Power::Red))
+            .with_unit(Location::A1, Power::Blue)
+            .with_unit(Location::C4, Power::Green);
+
+        assert_eq!(
+            state.board_state_string(),
+            "B . . . . .\n. n . . n .\n. . n G . n\n. n . . . .\n. . n . n .\n. . . . . ."
+        );
+    }
 }
